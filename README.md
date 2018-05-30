@@ -18,8 +18,11 @@ Have explored the data and then fit a big and complicated logistic regression mo
 ### Research Question - Does increase in the discharge count increase the Average Medicare Payment Amount when categorized by disease group?
 
 Medicare is the federal health insurance program for:
+
 • People who are 65 or older
+
 • Certain younger people with disabilities
+
 • People with End-Stage Renal Disease (permanent kidney failure requiring dialysis or a transplant, called ESRD)
 
 The Trump presidency is looking to curb the funds for certain group of people whom they claim are physically capable of earning an income above the federal poverty line. Focus on performing data analysis on the Provider Utilization and Payment Data Inpatient Public Use File (referred to as “Inpatient PUF”) prepared by the Centers for Medicare & Medicaid Services (CMS). It contains hospital-specific charges for more than 3,000 U.S. hospitals. The hospitals receive Medicare based on a rate per discharge categorized by the Medicare Severity Diagnosis Related Group (MS-DRG). The Inpatient PUF is available for the years 2011 through 2015. The MS-DRG is limited to the top 100 most frequently billed discharges.
