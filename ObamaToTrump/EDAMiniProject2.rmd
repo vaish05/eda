@@ -1,0 +1,390 @@
+---
+title: "Mini Project 2"
+author: "Vaishnavi Srinivasan, Harsh Mehta, Khusaal Giri and Ayesha Bhimdiwala"
+date: "March 1, 2018"
+output:
+  md_document:
+    variant: markdown_github
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(ggplot2)
+library(boot)
+library(gridExtra)
+library(GGally)
+library(knitr)
+library(kableExtra)
+```
+
+### Introduction
+
+We will be using the data from Cooperative Congressional Election Study(CCES). It is a 50,000+ person national stratified sample survey administered by YouGov. The survey consists of two waves - pre-election phase, respondents answer two-thirds of the questionnaire and the post-election phase, respondents answer the other third of the questionnaire. The spacing of interviews allows researchers to gauge the effects of campaign information and events. [Credit: [CCES Harvard](https://cces.gov.harvard.edu/)]
+
+For our research, we will be using data from CCES 2016, Data\@CCES_Harvard(http://cces.gov.harvard.edu/data), which consists of a survey of a nationally representative sample of 64,600 adults - CCES16_Common_OUTPUT_Feb2018_VV.RData.
+
+**We will be addressing the question - To what extent do attitudes toward immigration explains the switching of votes of 2012 Obama supporters who became 2016 Trump supporters?**
+
+We divide our analysis into three sections - first using a single predictor to determine each demographic group that switched to Trump, then we use two predictors and then more than two predictors.
+
+### Section 01: Using One Predictor
+
+To begin, we first derive a variable that measures the respondent's attitude toward immigration. Then, we calculate the weighted proportion for each demographic. We use these variables to see who switched to Trump for every demographic given their attitude towards immigration.
+
+```{r}
+#setwd("C:/Users/belle/OneDrive/Desktop/Semester 2/EDA/Data")
+setwd("E:/Desktop/Semester 2/EDA/Data")
+load(file = "CCES16_Common_OUTPUT_Feb2018_VV.RData")
+attach(x)
+temp <- x[as.character(x$tookpost) == "Yes",]
+obama = subset(temp,as.character(temp$CC16_326) == "Barack Obama")
+rm(x, temp)
+detach(x)
+
+obama <- subset(obama,select=c(commonweight_vv_post, tookpost, gender, educ, race, pid7, CC16_326, CC16_410a, CC16_331_1, CC16_331_2, CC16_331_3, CC16_331_7))
+
+obama$trumpResp[obama$CC16_410a == "Donald Trump (Republican)"] <- 1
+obama$trumpResp[obama$CC16_410a != "Donald Trump (Republican)"] <- 0
+obama$trumpResp[is.na(obama$CC16_410a)] <- 0
+
+attTwdImmis = c("Negative Attitude towards Immigrant", "Less Negative Attitude towards Immigrant", "Neutral Attitude towards Immigrant", "Less Positive Attitude towards Immigrant", "Positive Attitude towards Immigrant")
+obama$attTwdImmi = obama$attTwdImmi1 = obama$attTwdImmi2 = obama$attTwdImmi3 = obama$attTwdImmi4 = 0
+obama$attTwdImmi1[obama$CC16_331_1 == "Yes"] <- 1
+obama$attTwdImmi2[obama$CC16_331_2 == "No"] <- 1
+obama$attTwdImmi3[obama$CC16_331_3 == "Yes"] <- 1
+obama$attTwdImmi4[obama$CC16_331_7 == "No"] <- 1
+obama$attTwdImmi = obama$attTwdImmi1 + obama$attTwdImmi2 + obama$attTwdImmi3 + obama$attTwdImmi4
+
+obama <- subset(obama,select=c(commonweight_vv_post, tookpost, gender, educ, race, pid7, CC16_326, CC16_410a, CC16_331_1, CC16_331_2, CC16_331_3, CC16_331_7, trumpResp, attTwdImmi))
+
+obama$race <- as.character(obama$race)
+obama$race[obama$race == "Asian" | obama$race == "Native American" | obama$race == "Mixed" | obama$race == "Middle Eastern" | obama$race == "Skipped" | obama$race == "Not Asked"] <- "Other"
+obama$race <- as.factor(obama$race)
+
+attach(obama)
+```
+
+```{r}
+obama$educ = as.character(obama$educ)
+obama$educ[obama$educ == "No HS"] <- "No High School"
+obama$educ[obama$educ == "Skipped" | obama$educ == "Not Asked"] <- "Other"
+obama$educ[obama$educ == "Some college" | obama$educ == "High school graduate"] <- "High School"
+obama$educ[obama$educ == "2-year" | obama$educ == "4-year" | obama$educ == "Post-grad"] <- "College"
+obama$educ <- as.factor(obama$educ)
+
+obama$gender = as.character(obama$gender)
+obama$gender[obama$gender == "Skipped" | obama$gender == "Not Asked"] <- "Other"
+obama$gender <- as.factor(obama$gender)
+
+
+obama$pid7 = as.character(obama$pid7)
+obama$pid7[obama$pid7 == "Skipped" | obama$pid7 == "Not Asked" | obama$pid7 == "Not sure"] <- "Other"
+obama$pid7[is.na(obama$pid7)] <- "Other"
+obama$pid7[obama$pid7 == "Strong Democrat" | obama$pid7 == "Not very strong Democrat" | obama$pid7 == "Lean Democrat"] <- "Democrat"
+obama$pid7[obama$pid7 == "Strong Republican" | obama$pid7 == "Not very strong Republican" | obama$pid7 == "Lean Republican"] <- "Republican"
+obama$pid7 <- as.factor(obama$pid7)
+
+# obama$pid7 = as.character(obama$pid7)
+# obama$pid7[is.na(obama$pid7)] <- "Not sure"
+# obama$pid7 <- as.factor(obama$pid7)
+
+obama$educNum <- as.numeric(obama$educ)
+obama$genderNum <- as.numeric(obama$gender)
+obama$pid7Num <- as.numeric(obama$pid7)
+obama$raceNum <- as.numeric(obama$race)
+
+races = levels(obama$race)
+raceWeight = c()
+obama$raceWeight = 0
+i = 1
+for (race in races){
+  obama$raceWeight[obama$race == race] = obama$commonweight_vv_post[obama$race == race]*obama$trumpResp[obama$race == race]
+  raceWeight[i] = round(as.numeric(sum(obama$raceWeight[obama$race == race])/sum(obama$commonweight_vv_post[obama$race == race])), 3)
+  obama$raceWeight[obama$race == race] = raceWeight[i]
+  i = i+1
+}
+
+edus = levels(obama$educ)
+eduWeight = c()
+obama$eduWeight = 0
+i = 1
+for (edu in edus){
+  obama$eduWeight[obama$educ == edu] = obama$commonweight_vv_post[obama$educ == edu]*obama$trumpResp[obama$educ == edu]
+  eduWeight[i] = round(as.numeric(sum(obama$eduWeight[obama$educ == edu])/sum(obama$commonweight_vv_post[obama$educ == edus])), 3)
+  obama$eduWeight[obama$educ == edu] = eduWeight[i]
+  i = i+1
+}
+
+genders = levels(obama$gender)
+genderWeight = c()
+obama$genderWeight = 0
+i = 1
+for (gend in genders){
+  obama$genderWeight[obama$gender == gend] = obama$commonweight_vv_post[obama$gender == gend]*obama$trumpResp[obama$gender == gend]
+  genderWeight[i] = round(as.numeric(sum(obama$eduWeight[obama$gender == gend])/sum(obama$commonweight_vv_post[obama$gender == gend])), 3)
+  obama$genderWeight[obama$gender == gend] = eduWeight[i]
+  i = i+1
+}
+
+pids = levels(obama$pid7)
+pidWeight = c()
+obama$pidWeight = 0
+i = 1
+for (pid in pids){
+  obama$pidWeight[obama$pid7 == pid] = obama$commonweight_vv_post[obama$pid7 == pid]*obama$trumpResp[obama$pid7 == pid]
+  pidWeight[i] = round(as.numeric(sum(obama$pidWeight[obama$pid7 == pid])/sum(obama$commonweight_vv_post[obama$pid7 == pid])), 3)
+  obama$pidWeight[obama$pid7 == pid] = pidWeight[i]
+  i = i+1
+}
+
+atis = levels(as.factor(obama$attTwdImmi))
+atiWeight = c()
+obama$atiWeight = 0
+i = 1
+for (ati in atis){
+  obama$atiWeight[obama$attTwdImmi == ati] = obama$commonweight_vv_post[obama$attTwdImmi == ati]*obama$trumpResp[obama$attTwdImmi == ati]
+  atiWeight[i] = round(as.numeric(sum(obama$atiWeight[obama$attTwdImmi == ati])/sum(obama$commonweight_vv_post[obama$attTwdImmi == ati])), 3)
+  obama$atiWeight[obama$attTwdImmi == ati] = atiWeight[i]
+  i = i+1
+}
+
+atis.df <- data.frame(atis, attTwdImmis, atiWeight)
+names(atis.df)[1]<-"Immigration Attitude(Numeric)"
+names(atis.df)[2]<-"Immigration Attitude"
+names(atis.df)[3]<-"Weight"
+edus.df <- data.frame(edus, eduWeight)
+names(edus.df)[1]<-"Education Level"
+names(edus.df)[2]<-"Education Level Weight"
+pids.df <- data.frame(pids, pidWeight)
+names(pids.df)[1]<-"Party Affiliation"
+names(pids.df)[2]<-"Party Affiliation Weight"
+race.df <- data.frame(races, raceWeight)
+names(race.df)[1]<-"Race"
+names(race.df)[2]<-"Race Weight"
+gend.df <- data.frame(genders, genderWeight)
+names(gend.df)[1]<-"Gender"
+names(gend.df)[2]<-"Gender Weight"
+```
+
+```{r}
+kable(atis.df, caption = "Weighted proportion of Obama voters that switched to Trump - Attitude Towards Immigrants of Voters")
+kable(edus.df, caption = "Weighted proportion of Obama voters that switched to Trump - Education Level of Voters")
+kable(gend.df, caption = "Weighted proportion of Obama voters that switched to Trump - Gender of Voters")
+kable(pids.df, caption = "Weighted proportion of Obama voters that switched to Trump - Party Affiliation of Voters")
+kable(race.df, caption = "Weighted proportion of Obama voters that switched to Trump - Race of Voters")
+
+rm(race.df, pids.df, atis.df, edus.df, gend.df)
+```
+
+From the "Voters who switched to Trump for each Demographic group" graphs we find that,
+
+- Whites (13%) followed by Hispanics (9%) and Other races (8%) are more likely to switch their votes to Trump in 2016.
+
+- Black voters (3%) are the least likely to switch their vote to Trump.
+
+- High School graduates (19%) voters are more likely to switch when compared to College graduates (11%) and no high school (2%) voters.
+
+- Republicans are more likely to switch, followed by Independents and Other whereas Democrats are the least likely to switch their votes to Trump.
+
+- Republicans (50%) are 10 times more likely to switch their votes compared to Democrats (5%).
+
+- Voters more inclined towards immigration (2%) are less likely to switch their votes to Trump and anti-immigrants (40%) voters are more likely to switch their votes to Trump.
+
+- Males (19%) are more likely to switch their votes to Trump as compared to females (13%).
+
+```{r}
+racegg = ggplot(obama, aes(x = race, y = trumpResp)) + geom_jitter(height = 0.1, width = 0.25) + geom_smooth(method = "glm", method.args = list(family = "binomial")) + labs(x = 'Race', y = 'Switch to Trump') + geom_point(obama, mapping = aes(y = raceWeight, size=raceWeight), colour = "red") + theme(axis.text = element_text(size=6),legend.text = element_text(size=6),legend.key.height = unit(.15,"cm"))
+
+edugg = ggplot(obama, aes(x = educ, y = trumpResp)) + geom_jitter(height = 0.1, 
+    width = 0.25) + geom_smooth(method = "glm", method.args = list(family = "binomial")) + labs(x = 'Education', y = 'Switch to Trump') + geom_point(obama, mapping = aes(y = eduWeight, size=eduWeight), colour = "red") + theme(axis.text = element_text(size=6),legend.text = element_text(size=6),legend.key.height = unit(.15,"cm"))
+
+gndgg = ggplot(obama, aes(x = gender, y = trumpResp)) + geom_jitter(height = 0.1, 
+    width = 0.25) + geom_smooth(method = "glm", method.args = list(family = "binomial")) + labs(x = 'Gender', y = 'Switch to Trump') + geom_point(obama, mapping = aes(y = genderWeight, size=genderWeight), colour = "red") + theme(axis.text = element_text(size=6),legend.text = element_text(size=6),legend.key.height = unit(.15,"cm"))
+
+pidgg = ggplot(obama, aes(x = pid7, y = trumpResp)) + geom_jitter(height = 0.1, 
+    width = 0.25) + geom_smooth(method = "glm", method.args = list(family = "binomial")) + labs(x = 'Party Affiliation', y = 'Switch to Trump') + geom_point(obama, mapping = aes(y = pidWeight, size=pidWeight), colour = "red") + theme(axis.text = element_text(size=6),legend.text = element_text(size=6),legend.key.height = unit(.15,"cm"))
+
+atigg = ggplot(obama, aes(x = as.factor(attTwdImmi), y = trumpResp)) + geom_jitter(height = 0.1, 
+    width = 0.25) + geom_smooth(method = "glm", method.args = list(family = "binomial")) + labs(x = 'Attitude Towards Immigration', y = 'Switch to Trump') + geom_point(obama, mapping = aes(y = atiWeight, size=atiWeight), colour = "red") + theme(axis.text = element_text(size=6),legend.text = element_text(size=6),legend.key.height = unit(.15,"cm"))
+
+grid.arrange(racegg, edugg, pidgg, atigg, gndgg, nrow=3, top = "Voters who switched to
+Trump for each Demographic group")
+
+rm(racegg, edugg, pidgg, atigg, gndgg)
+```
+
+#Section 02: Using Two Predictors
+
+Now we use both variables (attitude towards immigration and remaining demographic parameters) to see who are more likely to switch their votes to Trump. We fit models and also examine if predictors have an interaction between them.
+
+```{r}
+#ggpairs(obama, columns = 13:18)
+```
+
+```{r}
+obama.logit.ni=glm(trumpResp~attTwdImmi+race, family = "quasibinomial", weights = commonweight_vv_post, data=obama)
+obama.logit.i=glm(trumpResp~attTwdImmi*race, family = "quasibinomial", weights = commonweight_vv_post, data=obama)
+
+race.df = expand.grid(race = c("White", "Black", "Hispanic", "Other"),attTwdImmi=0:4)
+
+race.pred.ni = predict(obama.logit.ni,type="response",newdata = race.df)
+race.pred.ni.df = data.frame(race.df,trswitch = as.vector(race.pred.ni))
+
+race.pred.i = predict(obama.logit.i,type="response",newdata = race.df)
+race.pred.i.df = data.frame(race.df,trswitch = as.vector(race.pred.i))
+
+ggplot(race.pred.ni.df,aes(x=attTwdImmi,y=trswitch))+geom_line(aes(color="No Interaction"))+geom_line(data = race.pred.i.df,aes( color="Interaction"))+facet_wrap(~race)+scale_colour_manual(values=c("No Interaction"="red","Interaction"="blue"))+labs(x="Attitude Towards Immigration",y="Switch to Trump",title="Voters Switching to Trump cut by Race")
+
+# cat("\nCoefficients for predictors without interaction:\n")
+# round(summary(obama.logit.ni)$coefficients,3)
+cat("\nCoefficients for predictors with interaction:\n")
+round(summary(obama.logit.i)$coefficients,3)
+```
+
+Looking at the above graph, we find an interaction between attitude towards immigration and race. There is a change in slope between the interaction and non-interaction lines and the coefficient for interaction terms are non-zero.
+
+All races have a negative slope. This means that anti-immigrants across all races have a higher probability to switch their votes to Trump as compared to people who are more accommodating towards immigrants. The probability of White voters switching their votes to Trump is highest followed by Hispanic and Other voters (especially ones who tend to be more anti-immigrant). The Black voters have the least probability of switching their votes.
+
+```{r}
+obama.logit.ni=glm(trumpResp~attTwdImmi+gender,family="quasibinomial", weights = commonweight_vv_post, data=obama)
+obama.logit.i=glm(trumpResp~attTwdImmi*gender,family="quasibinomial", weights = commonweight_vv_post, data=obama)
+gender.df = expand.grid(gender = c('Male','Female'),attTwdImmi=0:4)
+
+gender.pred.ni = predict(obama.logit.ni,type="response",newdata = gender.df)
+gender.pred.ni.df = data.frame(gender.df,trswitch = as.vector(gender.pred.ni))
+
+gender.pred.i = predict(obama.logit.i,type="response",newdata = gender.df)
+gender.pred.i.df = data.frame(gender.df,trswitch = as.vector(gender.pred.i))
+
+ggplot(gender.pred.ni.df,aes(x=attTwdImmi,y=trswitch))+geom_line(aes(color = "No Interaction"))+geom_line(data = gender.pred.i.df, aes(color = "Interaction"))+facet_wrap(~gender)+scale_colour_manual(name="",values=c("No Interaction"="red","Interaction"="blue"))+labs(x="Attitude Towards Immigration",y="Switch to Trump",title="Voters Switching to Trump cut by Gender")
+
+# cat("\nCoefficients for predictors without interaction:\n")
+# round(summary(obama.logit.ni)$coefficients,3)
+cat("\nCoefficients for predictors with interaction:\n")
+round(summary(obama.logit.i)$coefficients,3)
+```
+
+There is no interaction between attitude towards immigration and gender. The coefficient term for interaction is almost zero and there is no change in slopes between the interaction and non-interaction lines.
+
+Gender has a negative slope. Anti-immigrant male and female have a higher probability to switch their votes to Trump as compared to people who are more accommodating towards immigrants. Males are more likely to switch their votes to Trump compared to females.
+
+```{r}
+obama.logit.ni=glm(trumpResp~attTwdImmi+educNum,family="quasibinomial", weights = commonweight_vv_post, data=obama)
+obama.logit.i=glm(trumpResp~attTwdImmi*educNum,family="quasibinomial", weights = commonweight_vv_post, data=obama)
+
+educ.df = expand.grid(educNum = 1:3,attTwdImmi=0:4)
+
+educ.pred.ni = predict(obama.logit.ni,type="response",newdata = educ.df)
+educ.pred.ni.df = data.frame(educ.df,trswitch = as.vector(educ.pred.ni))
+
+educ.pred.i = predict(obama.logit.i,type="response",newdata = educ.df)
+educ.pred.i.df = data.frame(educ.df,trswitch = as.vector(educ.pred.i))
+
+ggplot(educ.pred.ni.df,aes(x=attTwdImmi,y=trswitch))+geom_line(aes(color = "No Interaction"))+geom_line(data = educ.pred.i.df, aes(color = "Interaction"))+facet_wrap(~educNum)+scale_colour_manual(name="",values=c("No Interaction"="red","Interaction"="blue"))+labs(x="Attitude Towards Immigration",y="Switch to Trump",title="Voters Switch to Trump cut by Level of Education")
+
+# cat("\nCoefficients for predictors without interaction:\n")
+# round(summary(obama.logit.ni)$coefficients,3)
+cat("\nCoefficients for predictors with interaction:\n")
+round(summary(obama.logit.i)$coefficients,3)
+```
+
+There is an interaction between attitude towards immigration and education levels. There is a change in slope between the interaction and non-interaction lines and the interaction coefficient is also non-zero.
+
+Level of education has a negative slope. Voters who are more anti-immigrant tend to have a higher probability of switching their votes as compared to the voters who are pro-immigrant. Highly educated voters have the least probability of switching their votes to Trump in 2016 election when compared with No high school and high school graduated voters. 
+
+```{r}
+obama.logit.ni=glm(trumpResp~attTwdImmi+pid7Num,family="quasibinomial", weights = commonweight_vv_post, data=obama)
+obama.logit.i=glm(trumpResp~attTwdImmi*pid7Num,family="quasibinomial", weights = commonweight_vv_post, data=obama)
+
+pid.df = expand.grid(pid7Num = 1:4,attTwdImmi=0:4)
+
+pid.pred.ni = predict(obama.logit.ni,type="response",newdata = pid.df)
+pid.pred.ni.df = data.frame(pid.df,trswitch = as.vector(pid.pred.ni))
+
+pid.pred.i = predict(obama.logit.i,type="response",newdata = pid.df)
+pid.pred.i.df = data.frame(pid.df,trswitch = as.vector(pid.pred.i))
+
+ggplot(pid.pred.ni.df,aes(x=attTwdImmi,y=trswitch))+geom_line(aes(color = "No Interaction"))+geom_line(data = pid.pred.i.df, aes(color = "Interaction"))+facet_wrap(~pid7Num)+scale_colour_manual(name="",values=c("No Interaction"="red","Interaction"="blue"))+labs(x="Attitude Towards Immigration",y="Switch to Trump",title="Voters Switching to Trump cut by Party Affiliation")
+
+# cat("\nCoefficients for predictors without interaction:\n")
+# round(summary(obama.logit.ni)$coefficients,3)
+cat("\nCoefficients for predictors with interaction:\n")
+round(summary(obama.logit.i)$coefficients,3)
+```
+
+We see that there is a reasonable interaction in our data between the two predictors - attitude towards immigration and party affiliation. There are changes in slope between the interaction and non-interaction lines for most of the parties and the interaction coefficient is non-zero.
+
+The lines have a negative slope. Republican voters, who supported other Republican candidates initially, have also switched to supporting Trump. Both the Other and Republican supporters have the highest the probability of switching their votes. We can observe that voters with the highest negative attitude towards (illegal) immigrants have switched to Trump and the switch decreases as their attitude towards (illegal) immigrants are more accepting. Democrats have the least probability of switching followed by Independent party supporters.
+
+#Section 03
+
+Based on the above observations, we now use more than two predictors (one with the attitude towards immigrants and one without) to make predictions on the probability of 2012 Obama supporters switching their votes to Trump in 2016 elections.
+
+We first build a model including attitude towards immigration as a predictor. For the model, we include interaction between 
+
+- party affiliation - gender, race  
+- race - gender, education and  
+- attitude towards immigration - party affiliation, race, education
+
+We exclude interaction between attitude towards immigration and gender (based on analysis done in Section 02) and gender \& education and party affiliation \& education (p-value is around 0.9). Looking at the fitted vs residuals plot (attached in the appendix), we find the curve is near zero and has small confidence bands. The model is a good fit.
+
+```{r}
+model.obama.ai = glm(trumpResp ~ attTwdImmi + pid7Num + genderNum + race + educNum + pid7Num:genderNum + pid7Num:race  + genderNum:race + race:educNum + attTwdImmi:pid7Num + attTwdImmi:race + attTwdImmi:educNum, family = "quasibinomial", weights = commonweight_vv_post, data = obama)
+
+cat("\nCoefficients for model (including the attitude towards immigration as a predictor):\n")
+round(summary(model.obama.ai)$coefficients,3)
+
+model.obama.ai.df = obama
+model.obama.ai.df$.fitted = fitted.values(model.obama.ai)
+model.obama.ai.df$.resid = residuals(model.obama.ai, type = "response")
+```
+
+Looking at the graph (next page), we see that the model does a good job of predicting. The probability of switching is highest with white and least with black voters. The more the voters tend to be anti-immigrant, the higher their probability of switch. High educated voters and democrat supporters tend to have lesser probability of switching.
+
+```{r}
+obama.grid = expand.grid(attTwdImmi = c(0,1,2,3,4), pid7Num = c(1,2,3,4), genderNum = c(1,2), race=c("Black", "White", "Hispanic", "Other"), educNum = c(1,2,3,4))
+obama.pred = predict(model.obama.ai, newdata = obama.grid, type = "response")
+response.grid = data.frame(obama.grid, switch.prob = as.vector(obama.pred))
+ggplot(response.grid, aes(x = attTwdImmi, y = switch.prob, group = race, color = race)) + geom_line() + facet_grid(genderNum + educNum ~ pid7Num) + xlab("Attitude towards Immigration") + ylab("Probability of switching")
+```
+
+Next, we build a model excluding attitude towards immigration as a predictor. For the model, we include interaction between 
+
+- party affiliation - gender, race, education  
+- gender - race, education and  
+- race - education
+
+```{r}
+model.obama.nai = glm(trumpResp ~ pid7Num + genderNum + race + educNum + pid7Num:genderNum + pid7Num:race + pid7Num:educNum + genderNum:race + genderNum:educNum + race:educNum, family = "quasibinomial", weights = commonweight_vv_post, data = obama)
+cat("\nCoefficients for model (excluding the attitude towards immigration as a predictor):\n")
+round(summary(model.obama.nai)$coefficients,3)
+model.obama.nai.df = obama
+model.obama.nai.df$.fitted = fitted.values(model.obama.nai)
+model.obama.nai.df$.resid = residuals(model.obama.nai, type = "response")
+```
+
+```{r}
+obama.grid = expand.grid(attTwdImmi = c(0,1,2,3,4), pid7Num = c(1,2,3,4), genderNum = c(1,2), race=c("Black", "White", "Hispanic", "Other"), educNum = c(1,2,3,4))
+obama.pred = predict(model.obama.nai, newdata = obama.grid, type = "response")
+response.grid = data.frame(obama.grid, switch.prob = as.vector(obama.pred))
+ggplot(response.grid, aes(x = pid7Num, y = switch.prob, group = race, color = race)) + geom_line() + facet_grid(genderNum ~ educNum) + xlab("Party Affiliation") + ylab("Probability of switching")
+```
+
+Looking at the above graph, we see that the model does a good job of predicting and is similar to the model with the attitude towards immigration as one of its predictors. The probability of switching is highest with white and least with black voters. High educated voters and democrat supporters tend to have lesser probability of switching.
+
+### CONCLUSION
+
+We begin the analysis by deriving a new feature "Attitude of Voters towards Immigration". Plotting each demographic against the probability of switch we find certain white voters with republican affiliation mostly male with education less than a college degree have a higher probability of switching and voting for Trump in 2016 elections. While blacks and Democrats have the least probability of switching their votes. The voters' attitude towards immigration feature does play a major role in the predictions. 
+
+During the election campaign, Trump was infamous for his derogatory remarks against women, disapproval of certain religion and tighter immigration laws. The data analysis also reveals that women have comparatively a lower probability of switching their votes to Trump along with non-white races. But these comments, have also swayed the white men towards Trump, as shown in the graphs, wherein they have a higher probability of switch.
+
+### APPENDIX
+
+```{r}
+ggplot(model.obama.ai.df, aes(x = .fitted, y = .resid)) + geom_point() + geom_smooth(method = "loess", method.args = list(degree = 1)) + xlab("Fitted values") + ylab("Residuals") + ggtitle("Fitted vs Residual plot for Model including Immigration Attitude as its predictor")
+ggplot(model.obama.nai.df, aes(x = .fitted, y = .resid)) + geom_point() + geom_smooth(method = "loess", method.args = list(degree = 1)) + xlab("Fitted values") + ylab("Residuals") + ggtitle("Fitted vs Residual plot for Model excluding Immigration Attitude as its predictor")
+```
+
